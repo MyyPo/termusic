@@ -38,6 +38,7 @@ prost.workspace = true
 rand.workspace = true #  = "0.8"
 reqwest.workspace = true
 serde.workspace = true
+sonic-sys.workspace = true
 soundtouch = { workspace = true, optional = true }
 souvlaki.workspace = true
 stream-download = { workspace = true, optional = true }
