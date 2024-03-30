@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["lib", "playback", "server", "tui"]
+members = ["lib", "playback", "server", "tui", "sonic-sys"]
 
 [workspace.package]
 authors = ["tramhao <haoxinkui@gmail.com>"]
