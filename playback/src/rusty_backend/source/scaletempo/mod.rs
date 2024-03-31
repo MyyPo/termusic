@@ -62,11 +62,9 @@ where
             return self.input.next();
         }
 
-        let channels = self.input.channels();
-        let sample_rate = self.input.sample_rate();
-        let mut out_buf = self.out_buffer.make_contiguous().to_vec();
-
         if self.out_buffer.is_empty() {
+            let channels = self.input.channels();
+            let sample_rate = self.input.sample_rate();
             self.in_buffer.clear();
             self.input
                 .by_ref()
@@ -75,66 +73,42 @@ where
             let samples = self.in_buffer.make_contiguous();
             let len_input = samples.len();
             // let len_input = samples.len() / channels as usize;
-            // let mut out_buf: Vec<f32> = Vec::new();
-            let mut out_buf = self.out_buffer.make_contiguous().to_vec();
+            let mut out_buf: Vec<f32> = Vec::new();
+            // let mut out_buf = self.out_buffer.make_contiguous().to_vec();
             unsafe {
                 let stream = sonic_sys::sonicCreateStream(sample_rate as i32, channels as i32);
-                // sonic_sys::sonicSetSpeed(stream, self.factor as f32);
-                sonic_sys::sonicSetSpeed(stream, 100.0);
+                sonic_sys::sonicSetSpeed(stream, self.factor as f32);
                 sonic_sys::sonicWriteFloatToStream(stream, samples.as_ptr(), len_input as i32);
                 sonic_sys::sonicFlushStream(stream);
                 let num_samples = sonic_sys::sonicSamplesAvailable(stream);
                 if num_samples <= 0 {
                     return None;
                 }
-                out_buf.reserve_exact(num_samples as usize);
-                info!("reserve {num_samples} ok");
+                out_buf.reserve_exact(num_samples as usize * channels as usize);
                 sonic_sys::sonicReadFloatFromStream(
                     stream,
                     out_buf.spare_capacity_mut().as_mut_ptr().cast(),
                     num_samples,
                 );
-                info!("read ok");
-                // sonic_sys::sonicDestroyStream(stream);
-                // out_buf.set_len(num_samples as usize);
+                sonic_sys::sonicDestroyStream(stream);
+                out_buf.set_len(num_samples as usize);
             }
-            // let vec = VecDeque::from(out_buf);
-            // self.out_buffer = vec;
+
+            out_buf
+                .iter()
+                .copied()
+                .for_each(|x| self.out_buffer.push_back(x));
         }
-        out_buf.pop()
+        // self.out_buffer.pop_front()
 
-        // self.soundtouch.set_tempo(self.factor);
-        // if self.out_buffer.is_empty() {
-        //     self.in_buffer.clear();
-        //     self.input
-        //         .by_ref()
-        //         .take(self.min_samples)
-        //         .for_each(|x| self.in_buffer.push_back(x));
-
-        //     let len_input = self.in_buffer.len() / self.input.channels() as usize;
-        //     self.soundtouch
-        //         .put_samples(self.in_buffer.make_contiguous(), len_input);
-
-        //     self.out_buffer.resize(self.min_samples, 0.0);
-        //     self.out_buffer.make_contiguous();
-
-        //     let len_output = self.in_buffer.len() / self.input.channels() as usize;
-        //     let read = self
-        //         .soundtouch
-        //         .receive_samples(self.out_buffer.as_mut_slices().0, len_output);
-
-        //     self.out_buffer
-        //         .truncate(read * self.input.channels() as usize);
-        // }
-
-        // match (
-        //     self.out_buffer.pop_front().map(|x| x * self.mix),
-        //     self.in_buffer.pop_front().map(|x| x * (1.0 - self.mix)),
-        // ) {
-        //     (Some(a), Some(b)) => Some(a + b),
-        //     (None, None) => None,
-        //     (None, Some(v)) | (Some(v), None) => Some(v),
-        // }
+        match (
+            self.out_buffer.pop_front().map(|x| x * self.mix),
+            self.in_buffer.pop_front().map(|x| x * (1.0 - self.mix)),
+        ) {
+            (Some(a), Some(b)) => Some(a + b),
+            (None, None) => None,
+            (None, Some(v)) | (Some(v), None) => Some(v),
+        }
     }
 }
 
