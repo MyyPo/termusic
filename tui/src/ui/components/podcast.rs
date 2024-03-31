@@ -868,7 +868,14 @@ impl Model {
                     })?;
                     ep.path = None;
                 }
-                Err(e) => bail!(format!("Error deleting \"{title}\": {e}")),
+                Err(e) => {
+                    // repeat the same thing as above, to adjust db when local file is missing
+                    self.db_podcast.remove_file(ep.id).map_err(|e| {
+                        anyhow!(format!("Could not remove file from db: {title} {e}"))
+                    })?;
+                    ep.path = None;
+                    bail!(format!("Error deleting \"{title}\": {e}"));
+                }
             }
         }
         self.podcast_sync_feeds_and_episodes();
