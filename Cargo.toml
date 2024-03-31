@@ -82,7 +82,6 @@ semver = "^1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 shellexpand = "3"
-soundtouch = "0.4"
 souvlaki = "0.7.2"
 stream-download = { version = "0.5", features = ["reqwest-rustls"] }
 symphonia = { version = "0.5.1", features = [

@@ -5,7 +5,6 @@ use std::collections::VecDeque;
 
 use super::mix_source::MixSource;
 use super::Source;
-use soundtouch::{Setting, SoundTouch};
 
 #[allow(clippy::cast_sign_loss)]
 pub fn tempo_stretch<I: Source<Item = f32>>(mut input: I, rate: f32) -> TempoStretch<I>
@@ -14,10 +13,10 @@ where
 {
     let channels = input.channels();
     let sample_rate = input.sample_rate();
-    let mut st = SoundTouch::new();
-    st.set_channels(u32::from(channels));
-    st.set_sample_rate(sample_rate);
-    st.set_tempo(f64::from(rate));
+    // let mut st = SoundTouch::new();
+    // st.set_channels(u32::from(channels));
+    // st.set_sample_rate(sample_rate);
+    // st.set_tempo(f64::from(rate));
     // let min_samples = st.get_setting(Setting::NominalInputSequence) as usize * channels as usize;
     let min_samples = 6000;
     // let initial_latency = st.get_setting(Setting::InitialLatency) as usize * channels as usize;
@@ -26,15 +25,55 @@ where
     out_buffer.resize(initial_latency, 0.0);
     out_buffer.make_contiguous();
     let mut initial_input: VecDeque<f32> = input.by_ref().take(initial_latency).collect();
-    let num_samples = initial_input.len() / channels as usize;
-    st.put_samples(initial_input.make_contiguous(), num_samples);
-    let read = st.receive_samples(out_buffer.as_mut_slices().0, num_samples);
-    out_buffer.truncate(read);
-    initial_input.clear();
+    // let num_samples = initial_input.len() / channels as usize;
+    // st.put_samples(initial_input.make_contiguous(), num_samples);
+    // let read = st.receive_samples(out_buffer.as_mut_slices().0, num_samples);
+    // out_buffer.truncate(read);
+    // initial_input.clear();
+
+    // input
+    //     .by_ref()
+    //     .take(min_samples)
+    //     .for_each(|x| initial_input.push_back(x));
+    let samples = initial_input.make_contiguous();
+    let len_input = samples.len();
+    let mut out_buf: Vec<f32> = Vec::new();
+    // let mut out_buf = self.out_buffer.make_contiguous().to_vec();
+    unsafe {
+        let stream = sonic_sys::sonicCreateStream(sample_rate as i32, channels as i32);
+        sonic_sys::sonicSetSpeed(stream, rate as f32);
+        sonic_sys::sonicWriteFloatToStream(stream, samples.as_ptr(), len_input as i32);
+        sonic_sys::sonicFlushStream(stream);
+        let num_samples = sonic_sys::sonicSamplesAvailable(stream);
+        if num_samples <= 0 {
+            return TempoStretch {
+                input,
+                min_samples,
+                // soundtouch: st,
+                out_buffer,
+                in_buffer: initial_input,
+                mix: 1.0,
+                factor: f64::from(rate),
+            };
+        }
+        out_buf.reserve_exact(num_samples as usize * channels as usize);
+        sonic_sys::sonicReadFloatFromStream(
+            stream,
+            out_buf.spare_capacity_mut().as_mut_ptr().cast(),
+            num_samples,
+        );
+        sonic_sys::sonicDestroyStream(stream);
+        out_buf.set_len(num_samples as usize);
+    }
+
+    out_buf
+        .iter()
+        .copied()
+        .for_each(|x| out_buffer.push_back(x));
     TempoStretch {
         input,
         min_samples,
-        soundtouch: st,
+        // soundtouch: st,
         out_buffer,
         in_buffer: initial_input,
         mix: 1.0,
@@ -44,7 +83,7 @@ where
 
 pub struct TempoStretch<I> {
     input: I,
-    soundtouch: SoundTouch,
+    // soundtouch: SoundTouch,
     min_samples: usize,
     out_buffer: VecDeque<f32>,
     in_buffer: VecDeque<f32>,
