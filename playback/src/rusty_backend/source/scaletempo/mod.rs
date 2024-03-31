@@ -18,8 +18,10 @@ where
     st.set_channels(u32::from(channels));
     st.set_sample_rate(sample_rate);
     st.set_tempo(f64::from(rate));
-    let min_samples = st.get_setting(Setting::NominalInputSequence) as usize * channels as usize;
-    let initial_latency = st.get_setting(Setting::InitialLatency) as usize * channels as usize;
+    // let min_samples = st.get_setting(Setting::NominalInputSequence) as usize * channels as usize;
+    let min_samples = 6000;
+    // let initial_latency = st.get_setting(Setting::InitialLatency) as usize * channels as usize;
+    let initial_latency = 8000;
     let mut out_buffer = VecDeque::new();
     out_buffer.resize(initial_latency, 0.0);
     out_buffer.make_contiguous();
@@ -36,7 +38,7 @@ where
         out_buffer,
         in_buffer: initial_input,
         mix: 1.0,
-        factor: 1.0,
+        factor: f64::from(rate),
     }
 }
 
