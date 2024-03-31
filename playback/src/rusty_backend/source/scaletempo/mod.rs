@@ -1,5 +1,5 @@
 // mod scaletempo_1;
-// mod sonic;
+mod sonic;
 
 use std::collections::VecDeque;
 
@@ -10,6 +10,8 @@ use sonic_sys::{
     sonicSamplesAvailable, sonicSetSpeed, sonicWriteFloatToStream,
 };
 
+use sonic::Sonic;
+
 #[allow(clippy::cast_sign_loss)]
 pub fn tempo_stretch<I: Source<Item = f32>>(mut input: I, rate: f32) -> TempoStretch<I>
 where
@@ -17,6 +19,9 @@ where
 {
     let channels = input.channels();
     let sample_rate = input.sample_rate();
+
+    let mut stream_local = Sonic::new(sample_rate as i32, channels as i32);
+
     let min_samples = 6000;
     let initial_latency = 8000;
     let mut out_buffer = VecDeque::new();
@@ -40,6 +45,7 @@ where
                 in_buffer: initial_input,
                 mix: 1.0,
                 factor: f64::from(rate),
+                stream_local,
             };
         }
         out_buf.reserve_exact(num_samples as usize * channels as usize);
@@ -60,6 +66,7 @@ where
         input,
         min_samples,
         // soundtouch: st,
+        stream_local,
         out_buffer,
         in_buffer: initial_input,
         mix: 1.0,
@@ -74,6 +81,7 @@ pub struct TempoStretch<I> {
     in_buffer: VecDeque<f32>,
     mix: f32,
     factor: f64,
+    stream_local: Sonic,
 }
 
 impl<I> Iterator for TempoStretch<I>
