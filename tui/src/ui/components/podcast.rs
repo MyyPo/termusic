@@ -869,7 +869,7 @@ impl Model {
                     ep.path = None;
                 }
                 Err(e) => {
-                    // repeat the same thing as above, to adjust db when local file is missing
+                    // Repeat the same thing in case the local file is missing. Update db
                     self.db_podcast.remove_file(ep.id).map_err(|e| {
                         anyhow!(format!("Could not remove file from db: {title} {e}"))
                     })?;
