@@ -54,6 +54,13 @@
 //
 // 6) Update:write
 
+use std::alloc::{alloc, dealloc, Layout};
+use std::mem::size_of;
+use std::ptr::null_mut;
+use std::slice;
+
+const MP_NUM_CHANNELS: usize = 64;
+
 struct MpScaletempo2Opts {
     // Max/min supported playback rates for fast/slow audio. Audio outside of these
     // ranges are muted.
@@ -143,61 +150,130 @@ struct MpScaletempo2 {
     // for padding after the final packet.
     input_buffer_added_silence: i32,
     energy_candidate_blocks: Vec<f32>,
+    // output buffer
+    output_buffer: Vec<Vec<f32>>,
+    output_buffer_size: i32,
+    output_buffer_frames: i32,
 }
 
-// fn mp_scaletempo2_destroy(p: &mut MpScaletempo2) {
-//     // Add code to destroy the MpScaletempo2 instance
-// }
+impl MpScaletempo2 {
+    fn mp_scaletempo2_reset(&mut self) {
+        self.target_block_index = 0;
+        self.search_block_index = 0;
+        self.input_buffer_frames = 0;
+        self.input_buffer_final_frames = 0;
+        self.input_buffer_added_silence = 0;
+        self.output_buffer_frames = 0;
+        self.num_complete_frames = 0;
+    }
 
-// fn mp_scaletempo2_reset(p: &mut MpScaletempo2) {
-//     // Add code to reset the MpScaletempo2 instance
-// }
+    pub fn mp_scaletempo2_create(channels: i32, ola_window_size: i32, ola_hop_size: i32) -> Self {
+        let target_block_size = ola_window_size * 2;
+        let search_block_size = ola_window_size * 2;
+        let optimal_block_size = ola_window_size * 2;
+        let wsola_output_size = ola_window_size * 2;
 
-// fn mp_scaletempo2_init(p: &mut MpScaletempo2, channels: i32, rate: i32) {
-//     // Add code to initialize the MpScaletempo2 instance with the given channels and rate
-// }
+        let input_buffer_size = 0;
+        let input_buffer_frames = 0;
+        let input_buffer_final_frames = 0;
+        let input_buffer_added_silence = 0;
+        let output_buffer_frames = 0;
+        let num_complete_frames = 0;
 
-// fn mp_scaletempo2_get_latency(p: &mut MpScaletempo2, playback_rate: f64) -> f64 {
-//     // Add code to get the latency of the MpScaletempo2 instance with the given playback rate
-//     0.0
-// }
+        let target_block_index = 0;
+        let search_block_index = 0;
 
-// fn mp_scaletempo2_fill_input_buffer(p: &mut MpScaletempo2, planes: &mut [u8], frame_size: i32, playback_rate: f64) -> i32 {
-//     // Add code to fill the input buffer of the MpScaletempo2 instance with the given planes, frame size, and playback rate
-//     0
-// }
+        let search_block_center_offset = 0.0;
 
-// fn mp_scaletempo2_set_final(p: &mut MpScaletempo2) {
-//     // Add code to set the final flag of the MpScaletempo2 instance
-// }
+        let target_block = vec![null_mut(); channels as usize];
+        let search_block = vec![null_mut(); channels as usize];
+        let optimal_block = vec![null_mut(); channels as usize];
+        let wsola_output = vec![null_mut(); channels as usize];
 
-// fn mp_scaletempo2_fill_buffer(p: &mut MpScaletempo2, dest: &mut [f32], dest_size: i32, playback_rate: f64) -> i32 {
-//     // Add code to fill the buffer of the MpScaletempo2 instance with the given destination, destination size, and playback rate
-//     0
-// }
+        let energy_candidate_blocks = vec![0.0; (search_block_size * channels) as usize];
 
-// fn mp_scaletempo2_frames_available(p: &mut MpScaletempo2, playback_rate: f64) -> bool {
-//     // Add code to check if frames are available in the MpScaletempo2 instance with the given playback rate
-//     false
-// }
+        Self {
+            channels,
+            ola_window_size,
+            ola_hop_size,
+            target_block_size,
+            search_block_size,
+            optimal_block_size,
+            wsola_output_size,
+            input_buffer_size,
+            input_buffer_frames,
+            input_buffer_final_frames,
+            input_buffer_added_silence,
+            output_buffer_frames,
+            num_complete_frames,
+            target_block_index,
+            search_block_index,
+            search_block_center_offset,
+            target_block,
+            search_block,
+            optimal_block,
+            wsola_output,
+            energy_candidate_blocks,
+        }
+    }
 
-
-use std::alloc::{alloc, dealloc, Layout};
-use std::mem::size_of;
-use std::ptr::null_mut;
-use std::slice;
+    fn mp_scaletempo2_destroy(p: &mut MpScaletempo2) {
+        for i in 0..p.channels {
+            unsafe {
+                dealloc(
+                    p.target_block[i as usize] as *mut u8,
+                    Layout::from_size_align_unchecked(
+                        (p.target_block_size * size_of::<f32>()) as usize,
+                        1,
+                    ),
+                );
+                dealloc(
+                    p.search_block[i as usize] as *mut u8,
+                    Layout::from_size_align_unchecked(
+                        (p.search_block_size * size_of::<f32>()) as usize,
+                        1,
+                    ),
+                );
+                dealloc(
+                    p.optimal_block[i as usize] as *mut u8,
+                    Layout::from_size_align_unchecked(
+                        (p.optimal_block_size * size_of::<f32>()) as usize,
+                        1,
+                    ),
+                );
+                dealloc(
+                    p.wsola_output[i as usize] as *mut u8,
+                    Layout::from_size_align_unchecked(
+                        (p.wsola_output_size * size_of::<f32>()) as usize,
+                        1,
+                    ),
+                );
+            }
+        }
+        dealloc(
+            p.input_buffer as *mut u8,
+            Layout::from_size_align_unchecked(
+                (p.input_buffer_size * size_of::<*mut f32>()) as usize,
+                1,
+            ),
+        );
+    }
+}
 
 struct Interval {
     lo: i32,
     hi: i32,
 }
 
-fn in_interval(n: i32, q: Interval) -> bool {
-    n >= q.lo && n <= q.hi
+impl Interval {
+    fn in_interval(&self, n: i32) -> bool {
+        n >= self.lo && n <= self.hi
+    }
 }
 
 fn realloc_2d(p: *mut *mut f32, x: i32, y: i32) -> *mut *mut f32 {
-    let array_size = size_of::<*mut f32>() * x as usize + size_of::<f32>() * x as usize * y as usize;
+    let array_size =
+        size_of::<*mut f32>() * x as usize + size_of::<f32>() * x as usize * y as usize;
     let array_layout = Layout::from_size_align(array_size, 1).unwrap();
     let array = unsafe { alloc(array_layout) as *mut *mut f32 };
     let data = unsafe { array.add(x as usize) as *mut f32 };
@@ -216,7 +292,7 @@ fn zero_2d(a: *mut *mut f32, x: i32, y: i32) {
     }
 }
 
-fn zero_2d_partial(a: *mut *mut f32, x: i32, y: i32) {
+fn zero_2d_partial(a: Vec<Vec<f32>>, x: i32, y: i32) {
     for i in 0..x {
         let size = size_of::<f32>() * y as usize;
         unsafe {
@@ -235,7 +311,8 @@ fn multi_channel_moving_block_energies(
     let num_blocks = input_frames - (frames_per_block - 1);
 
     for k in 0..channels {
-        let input_channel = unsafe { slice::from_raw_parts(input[k as usize], input_frames as usize) };
+        let input_channel =
+            unsafe { slice::from_raw_parts(input[k as usize], input_frames as usize) };
 
         energy[k as usize] = 0.0;
 
@@ -248,7 +325,8 @@ fn multi_channel_moving_block_energies(
         let mut slide_in = &input_channel[frames_per_block as usize..];
         for n in 1..num_blocks {
             energy[(k + n * channels) as usize] = energy[(k + (n - 1) * channels) as usize]
-                - slide_out[0] * slide_out[0] + slide_in[0] * slide_in[0];
+                - slide_out[0] * slide_out[0]
+                + slide_in[0] * slide_in[0];
             slide_out = &slide_out[1..];
             slide_in = &slide_in[1..];
         }
@@ -270,10 +348,74 @@ fn multi_channel_similarity_measure(
     similarity_measure
 }
 
-#[cfg(feature = "vector")]
-type V8sf = [f32; 8];
+// #[cfg(feature = "vector")]
+// type V8sf = [f32; 8];
 
-#[cfg(feature = "vector")]
+// #[cfg(feature = "vector")]
+// fn multi_channel_dot_product(
+//     a: &[*mut f32],
+//     frame_offset_a: i32,
+//     b: &[*mut f32],
+//     frame_offset_b: i32,
+//     channels: i32,
+//     num_frames: i32,
+//     dot_product: &mut [f32],
+// ) {
+//     assert!(frame_offset_a >= 0);
+//     assert!(frame_offset_b >= 0);
+
+//     for k in 0..channels {
+//         let ch_a = unsafe { slice::from_raw_parts(a[k as usize].add(frame_offset_a as usize), num_frames as usize) };
+//         let ch_b = unsafe { slice::from_raw_parts(b[k as usize].add(frame_offset_b as usize), num_frames as usize) };
+//         let mut sum = 0.0;
+//         if num_frames < 32 {
+//             goto rest;
+//         }
+
+//         let va = unsafe { &*(ch_a.as_ptr() as *const V8sf) };
+//         let vb = unsafe { &*(ch_b.as_ptr() as *const V8sf) };
+//         let mut vsum = [
+//             va[0] * vb[0],
+//             va[1] * vb[1],
+//             va[2] * vb[2],
+//             va[3] * vb[3],
+//         ];
+//         let mut va = unsafe { va.add(4) };
+//         let mut vb = unsafe { vb.add(4) };
+
+//         // Process `va` and `vb` across four vertical stripes
+//         for _ in 1..num_frames / 32 {
+//             vsum[0] += va[0] * vb[0];
+//             vsum[1] += va[1] * vb[1];
+//             vsum[2] += va[2] * vb[2];
+//             vsum[3] += va[3] * vb[3];
+//             va = unsafe { va.add(4) };
+//             vb = unsafe { vb.add(4) };
+//         }
+
+//         // Vertical sum across `vsum` entries
+//         vsum[0] += vsum[1];
+//         vsum[2] += vsum[3];
+//         vsum[0] += vsum[2];
+
+//         // Horizontal sum across `vsum[0]`, could probably be done better but
+//         // this section is not super performance critical
+//         let vf = unsafe { &*(vsum[0].as_ptr() as *const [f32; 8]) };
+//         sum = vf.iter().sum();
+//         let ch_a = unsafe { va as *const f32 };
+//         let ch_b = unsafe { vb as *const f32 };
+
+//     rest:
+//         // Process the remainder
+//         for n in 0..num_frames % 32 {
+//             sum += unsafe { *ch_a.add(n as usize) } * unsafe { *ch_b.add(n as usize) };
+//         }
+
+//         dot_product[k as usize] = sum;
+//     }
+// }
+
+// #[cfg(not(feature = "vector"))]
 fn multi_channel_dot_product(
     a: &[*mut f32],
     frame_offset_a: i32,
@@ -287,72 +429,18 @@ fn multi_channel_dot_product(
     assert!(frame_offset_b >= 0);
 
     for k in 0..channels {
-        let ch_a = unsafe { slice::from_raw_parts(a[k as usize].add(frame_offset_a as usize), num_frames as usize) };
-        let ch_b = unsafe { slice::from_raw_parts(b[k as usize].add(frame_offset_b as usize), num_frames as usize) };
-        let mut sum = 0.0;
-        if num_frames < 32 {
-            goto rest;
-        }
-
-        let va = unsafe { &*(ch_a.as_ptr() as *const V8sf) };
-        let vb = unsafe { &*(ch_b.as_ptr() as *const V8sf) };
-        let mut vsum = [
-            va[0] * vb[0],
-            va[1] * vb[1],
-            va[2] * vb[2],
-            va[3] * vb[3],
-        ];
-        let mut va = unsafe { va.add(4) };
-        let mut vb = unsafe { vb.add(4) };
-
-        // Process `va` and `vb` across four vertical stripes
-        for _ in 1..num_frames / 32 {
-            vsum[0] += va[0] * vb[0];
-            vsum[1] += va[1] * vb[1];
-            vsum[2] += va[2] * vb[2];
-            vsum[3] += va[3] * vb[3];
-            va = unsafe { va.add(4) };
-            vb = unsafe { vb.add(4) };
-        }
-
-        // Vertical sum across `vsum` entries
-        vsum[0] += vsum[1];
-        vsum[2] += vsum[3];
-        vsum[0] += vsum[2];
-
-        // Horizontal sum across `vsum[0]`, could probably be done better but
-        // this section is not super performance critical
-        let vf = unsafe { &*(vsum[0].as_ptr() as *const [f32; 8]) };
-        sum = vf.iter().sum();
-        let ch_a = unsafe { va as *const f32 };
-        let ch_b = unsafe { vb as *const f32 };
-
-    rest:
-        // Process the remainder
-        for n in 0..num_frames % 32 {
-            sum += unsafe { *ch_a.add(n as usize) } * unsafe { *ch_b.add(n as usize) };
-        }
-
-        dot_product[k as usize] = sum;
-    }
-}
-
-#[cfg(not(feature = "vector"))]
-fn multi_channel_dot_product(
-    a: &[*mut f32],
-    frame_offset_a: i32,
-    b: &[*mut f32],
-    frame_offset_b: i32,
-    channels: i32,
-    num_frames: i32,
-    dot_product: &mut [f32],
-) {
-    assert!(frame_offset_a >= 0);
-    assert!(frame_offset_b >= 0);
-
-    for k in 0..channels {
-        let ch_a = unsafe { slice::from_raw_parts(a[k as usize].add(frame_offset_a as usize), num_frames as usize) };
-        let ch_b = unsafe { slice::from_raw_parts(b[k as usize].add(frame_offset_b as usize), num_frames as usize) };
+        let ch_a = unsafe {
+            slice::from_raw_parts(
+                a[k as usize].add(frame_offset_a as usize),
+                num_frames as usize,
+            )
+        };
+        let ch_b = unsafe {
+            slice::from_raw_parts(
+                b[k as usize].add(frame_offset_b as usize),
+                num_frames as usize,
+            )
+        };
         let mut sum = 0.0;
         for n in 0..num_frames {
             sum += ch_a[n as usize] * ch_b[n as usize];
@@ -432,7 +520,11 @@ fn decimated_search(
 
     n += decimation;
     if n >= num_candidate_blocks {
-        return if similarity[1] > similarity[0] { decimation } else { 0 };
+        return if similarity[1] > similarity[0] {
+            decimation
+        } else {
+            0
+        };
     }
 
     for _ in n..num_candidate_blocks {
@@ -458,19 +550,23 @@ fn decimated_search(
         {
             let mut normalized_candidate_index = 0.0;
             let mut candidate_similarity = 0.0;
-            quadratic_interpolation(&similarity, &mut normalized_candidate_index, &mut candidate_similarity);
+            quadratic_interpolation(
+                &similarity,
+                &mut normalized_candidate_index,
+                &mut candidate_similarity,
+            );
 
-            let candidate_index = n - decimation
-                + (normalized_candidate_index * decimation as f32 + 0.5) as i32;
+            let candidate_index =
+                n - decimation + (normalized_candidate_index * decimation as f32 + 0.5) as i32;
             if candidate_similarity > best_similarity
-                && !in_interval(candidate_index, exclude_interval)
+                && !exclude_interval.in_interval(candidate_index)
             {
                 optimal_index = candidate_index;
                 best_similarity = candidate_similarity;
             }
         } else if n + decimation >= num_candidate_blocks
             && similarity[2] > best_similarity
-            && !in_interval(n, exclude_interval)
+            && !exclude_interval.in_interval(n)
         {
             optimal_index = n;
             best_similarity = similarity[2];
@@ -496,7 +592,7 @@ fn full_search(
     let mut optimal_index = 0;
 
     for n in low_limit..=high_limit {
-        if in_interval(n, exclude_interval) {
+        if exclude_interval.in_interval(n) {
             continue;
         }
         let mut dot_prod = vec![0.0; channels as usize];
@@ -531,38 +627,76 @@ fn compute_optimal_index(
     search_block_frames: i32,
     target_block: &[*mut f32],
     target_block_frames: i32,
-    energy_candidate_blocks: &[f32],
+    energy_candidate_blocks: &mut [f32],
     channels: i32,
     exclude_interval: Interval,
 ) -> i32 {
     let num_candidate_blocks = search_block_frames - (target_block_frames - 1);
 
-    let optimal_index = if target_is_within_search_region() {
-        p.target_block_index
-    } else {
-        let last_optimal = p.target_block_index - p.ola_hop_size - p.search_block_index;
-        let exclude_iterval = Interval {
-            lo: last_optimal - exclude_interval_length_frames / 2,
-            hi: last_optimal + exclude_interval_length_frames / 2,
-        };
+    // This is a compromise between complexity reduction and search accuracy. I
+    // don't have a proof that down sample of order 5 is optimal.
+    // One can compute a decimation factor that minimizes complexity given
+    // the size of |search_block| and |target_block|. However, my experiments
+    // show the rate of missing the optimal index is significant.
+    // This value is chosen heuristically based on experiments.
+    const SEARCH_DECIMATION: i32 = 5;
 
-        let optimal_index = compute_optimal_index(
-            p.search_block,
-            p.search_block_size,
-            p.target_block,
-            p.ola_window_size,
-            p.energy_candidate_blocks,
-            p.channels,
-            exclude_iterval,
-        );
+    let mut energy_target_block = [0.0; MP_NUM_CHANNELS];
 
-        optimal_index + p.search_block_index
-    };
+    // Energy of all candid frames.
+    multi_channel_moving_block_energies(
+        search_block,
+        search_block_frames,
+        channels,
+        target_block_frames,
+        energy_candidate_blocks,
+    );
 
-    optimal_index
+    // Energy of target frame.
+    multi_channel_dot_product(
+        target_block,
+        0,
+        target_block,
+        0,
+        channels,
+        target_block_frames,
+        &mut energy_target_block,
+    );
+
+    let optimal_index = decimated_search(
+        SEARCH_DECIMATION,
+        exclude_interval,
+        target_block,
+        target_block_frames,
+        search_block,
+        search_block_frames,
+        channels,
+        &energy_target_block,
+    );
+
+    let lim_low = std::cmp::max(0, optimal_index - SEARCH_DECIMATION);
+    let lim_high = std::cmp::min(num_candidate_blocks - 1, optimal_index + SEARCH_DECIMATION);
+    full_search(
+        lim_low,
+        lim_high,
+        exclude_interval,
+        target_block,
+        target_block_frames,
+        search_block,
+        search_block_frames,
+        channels,
+        &energy_target_block,
+        energy_candidate_blocks,
+    )
 }
 
-fn peek_buffer(p: &mut MpScaletempo2, frames: i32, read_offset: i32, write_offset: i32, dest: &mut [*mut f32]) {
+fn peek_buffer(
+    p: &mut MpScaletempo2,
+    frames: i32,
+    read_offset: i32,
+    write_offset: i32,
+    dest: Vec<Vec<f32>>,
+) {
     assert!(p.input_buffer_frames >= frames);
     for i in 0..p.channels {
         unsafe {
@@ -678,7 +812,9 @@ fn add_input_buffer_final_silence(p: &mut MpScaletempo2, playback_rate: f64) {
     }
 
     for i in 0..p.channels {
-        let ch_input = unsafe { slice::from_raw_parts_mut(p.input_buffer[i as usize], p.input_buffer_frames as usize) };
+        let ch_input = unsafe {
+            slice::from_raw_parts_mut(p.input_buffer[i as usize], p.input_buffer_frames as usize)
+        };
         for j in 0..needed {
             ch_input[p.input_buffer_frames as usize + j as usize] = 0.0;
         }
@@ -712,7 +848,9 @@ fn mp_scaletempo2_fill_input_buffer(
     }
 
     for i in 0..p.channels {
-        let ch_input = unsafe { slice::from_raw_parts_mut(p.input_buffer[i as usize], p.input_buffer_frames as usize) };
+        let ch_input = unsafe {
+            slice::from_raw_parts_mut(p.input_buffer[i as usize], p.input_buffer_frames as usize)
+        };
         let ch_planes = unsafe { slice::from_raw_parts(planes[i as usize], frame_size as usize) };
         ch_input[p.input_buffer_frames as usize..].copy_from_slice(ch_planes[..read as usize]);
     }
@@ -729,7 +867,7 @@ fn target_is_within_search_region(p: &MpScaletempo2) -> bool {
 fn peek_audio_with_zero_prepend(
     p: &mut MpScaletempo2,
     read_offset_frames: i32,
-    dest: &mut [*mut f32],
+    dest: Vec<Vec<f32>>,
     dest_frames: i32,
 ) {
     assert!(read_offset_frames + dest_frames <= p.input_buffer_frames);
@@ -743,7 +881,13 @@ fn peek_audio_with_zero_prepend(
         write_offset = num_zero_frames_appended;
         zero_2d_partial(dest, p.channels, num_zero_frames_appended);
     }
-    peek_buffer(p, num_frames_to_read, read_offset_frames, write_offset, dest);
+    peek_buffer(
+        p,
+        num_frames_to_read,
+        read_offset_frames,
+        write_offset,
+        dest,
+    );
 }
 
 fn get_optimal_block(p: &mut MpScaletempo2) {
@@ -752,12 +896,7 @@ fn get_optimal_block(p: &mut MpScaletempo2) {
     let exclude_interval_length_frames = 160;
     if target_is_within_search_region(p) {
         optimal_index = p.target_block_index;
-        peek_audio_with_zero_prepend(
-            p,
-            optimal_index,
-            &mut p.optimal_block,
-            p.ola_window_size,
-        );
+        peek_audio_with_zero_prepend(p, optimal_index, &mut p.optimal_block, p.ola_window_size);
     } else {
         peek_audio_with_zero_prepend(
             p,
@@ -788,12 +927,7 @@ fn get_optimal_block(p: &mut MpScaletempo2) {
         );
 
         optimal_index += p.search_block_index;
-        peek_audio_with_zero_prepend(
-            p,
-            optimal_index,
-            &mut p.optimal_block,
-            p.ola_window_size,
-        );
+        peek_audio_with_zero_prepend(p, optimal_index, &mut p.optimal_block, p.ola_window_size);
     }
 
     let last_optimal = p.target_block_index - p.ola_hop_size;
@@ -818,14 +952,19 @@ fn get_optimal_block(p: &mut MpScaletempo2) {
             let optimal = unsafe { *p.optimal_block[k as usize].add(i as usize) };
             let transition = transition_window[i as usize];
             unsafe {
-                *p.target_block[k as usize].add(i as usize) = target * (1.0 - transition)
-                    + optimal * transition;
+                *p.target_block[k as usize].add(i as usize) =
+                    target * (1.0 - transition) + optimal * transition;
             }
         }
     }
 }
 
-fn mp_scaletempo2_output(p: &mut MpScaletempo2, playback_rate: f64, frames: i32, dest: &mut [*mut f32]) -> i32 {
+fn mp_scaletempo2_output(
+    p: &mut MpScaletempo2,
+    playback_rate: f64,
+    frames: i32,
+    dest: &mut [*mut f32],
+) -> i32 {
     let mut frames_written = 0;
     while frames_written < frames {
         if can_perform_wsola(p, playback_rate) {
@@ -875,152 +1014,27 @@ fn mp_scaletempo2_output(p: &mut MpScaletempo2, playback_rate: f64, frames: i32,
     frames_written
 }
 
-fn mp_scaletempo2_reset(p: &mut MpScaletempo2) {
-    p.target_block_index = 0;
-    p.search_block_index = 0;
-    p.input_buffer_frames = 0;
-    p.input_buffer_final_frames = 0;
-    p.input_buffer_added_silence = 0;
-    p.output_buffer_frames = 0;
-    p.num_complete_frames = 0;
-}
-
-fn mp_scaletempo2_create(channels: i32, ola_window_size: i32, ola_hop_size: i32) -> MpScaletempo2 {
-    let target_block_size = ola_window_size * 2;
-    let search_block_size = ola_window_size * 2;
-    let optimal_block_size = ola_window_size * 2;
-    let wsola_output_size = ola_window_size * 2;
-
-    let input_buffer_size = 0;
-    let input_buffer_frames = 0;
-    let input_buffer_final_frames = 0;
-    let input_buffer_added_silence = 0;
-    let output_buffer_frames = 0;
-    let num_complete_frames = 0;
-
-    let target_block_index = 0;
-    let search_block_index = 0;
-
-    let search_block_center_offset = 0.0;
-
-    let target_block = vec![null_mut(); channels as usize];
-    let search_block = vec![null_mut(); channels as usize];
-    let optimal_block = vec![null_mut(); channels as usize];
-    let wsola_output = vec![null_mut(); channels as usize];
-
-    let energy_candidate_blocks = vec![0.0; (search_block_size * channels) as usize];
-
-    MpScaletempo2 {
-        channels,
-        ola_window_size,
-        ola_hop_size,
-        target_block_size,
-        search_block_size,
-        optimal_block_size,
-        wsola_output_size,
-        input_buffer_size,
-        input_buffer_frames,
-        input_buffer_final_frames,
-        input_buffer_added_silence,
-        output_buffer_frames,
-        num_complete_frames,
-        target_block_index,
-        search_block_index,
-        search_block_center_offset,
-        target_block,
-        search_block,
-        optimal_block,
-        wsola_output,
-        energy_candidate_blocks,
-    }
-}
-
-fn mp_scaletempo2_destroy(p: &mut MpScaletempo2) {
-    for i in 0..p.channels {
-        unsafe {
-            dealloc(
-                p.target_block[i as usize] as *mut u8,
-                Layout::from_size_align_unchecked(
-                    (p.target_block_size * size_of::<f32>()) as usize,
-                    1,
-                ),
-            );
-            dealloc(
-                p.search_block[i as usize] as *mut u8,
-                Layout::from_size_align_unchecked(
-                    (p.search_block_size * size_of::<f32>()) as usize,
-                    1,
-                ),
-            );
-            dealloc(
-                p.optimal_block[i as usize] as *mut u8,
-                Layout::from_size_align_unchecked(
-                    (p.optimal_block_size * size_of::<f32>()) as usize,
-                    1,
-                ),
-            );
-            dealloc(
-                p.wsola_output[i as usize] as *mut u8,
-                Layout::from_size_align_unchecked(
-                    (p.wsola_output_size * size_of::<f32>()) as usize,
-                    1,
-                ),
-            );
-        }
-    }
-    dealloc(
-        p.input_buffer as *mut u8,
-        Layout::from_size_align_unchecked(
-            (p.input_buffer_size * size_of::<*mut f32>()) as usize,
-            1,
-        ),
-    );
-}
-
-struct MpScaletempo2 {
-    channels: i32,
-    ola_window_size: i32,
-    ola_hop_size: i32,
-    target_block_size: i32,
-    search_block_size: i32,
-    optimal_block_size: i32,
-    wsola_output_size: i32,
-    input_buffer_size: i32,
-    input_buffer_frames: i32,
-    input_buffer_final_frames: i32,
-    input_buffer_added_silence: i32,
-    output_buffer_frames: i32,
-    num_complete_frames: i32,
-    target_block_index: i32,
-    search_block_index: i32,
-    search_block_center_offset: f64,
-    target_block: Vec<*mut f32>,
-    search_block: Vec<*mut f32>,
-    optimal_block: Vec<*mut f32>,
-    wsola_output: Vec<*mut f32>,
-    energy_candidate_blocks: Vec<f32>,
-}
-
 fn main() {
     let channels = 2;
     let ola_window_size = 1024;
     let ola_hop_size = 256;
     let mut p = mp_scaletempo2_create(channels, ola_window_size, ola_hop_size);
     let playback_rate = 1.0;
-    let frames = 1024;
+    let frames: i32 = 1024;
     let mut dest = vec![null_mut(); channels as usize];
     for i in 0..channels {
-        let size = (frames * size_of::<f32>()) as usize;
+        let size = frames as usize * size_of::<f32>();
         let layout = Layout::from_size_align(size, 1).unwrap();
         dest[i as usize] = unsafe { alloc(layout) as *mut f32 };
     }
     let frames_written = mp_scaletempo2_output(&mut p, playback_rate, frames, &mut dest);
     for i in 0..channels {
         unsafe {
-            dealloc(dest[i as usize] as *mut u8, Layout::from_size_align_unchecked((frames * size_of::<f32>()) as usize, 1));
+            dealloc(
+                dest[i as usize] as *mut u8,
+                Layout::from_size_align_unchecked(frames as usize * size_of::<f32>(), 1),
+            );
         }
     }
     mp_scaletempo2_destroy(&mut p);
 }
-
-
