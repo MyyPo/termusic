@@ -17,8 +17,8 @@ default: fmt
 
 fmt:
 	cargo fmt --all
-	cargo check --all --features cover,all-backends
-	cargo clippy --all --features cover,all-backends
+	cargo check --all --features all-backends
+	cargo clippy --all --features all-backends
 	# cargo clippy -- -D warnings
 
 run: 
@@ -31,22 +31,22 @@ release:
 # backends + cover
 
 rusty:
-	cargo build --features cover --release --all
+	cargo build --release --all
 
 mpv:
 	# disable "rusty" backend default
-	cargo build --no-default-features --features cover,mpv --release --all
+	cargo build --no-default-features --features mpv --release --all
 
 gst:
 	# disable "rusty" backend default
-	cargo build --no-default-features --features cover,gst --release --all
+	cargo build --no-default-features --features gst --release --all
 
 all-backends:
-	cargo build  --features cover,all-backends --release --all
+	cargo build  --features all-backends --release --all
 
 test: 
 
-	cargo test --features cover,all-backends --release --all
+	cargo test --features all-backends --release --all
 
 # end backends + cover
 

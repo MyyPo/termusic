@@ -32,13 +32,14 @@ gstreamer = { workspace = true, optional = true}
 lazy_static.workspace = true
 libmpv-sirno = { workspace = true, optional = true }
 log.workspace = true # = "0.4"
+ness_stretch_lib = { workspace = true, optional = true}
 parking_lot.workspace = true
 pathdiff.workspace = true #  = { version = "0.2", features = ["camino"] }
 prost.workspace = true
 rand.workspace = true #  = "0.8"
 reqwest.workspace = true
 serde.workspace = true
-soundtouch = { workspace = true, optional = true }
+# soundtouch = { workspace = true, optional = true }
 souvlaki.workspace = true
 stream-download = { workspace = true, optional = true }
 symphonia = { workspace = true, optional = true }
@@ -65,7 +66,7 @@ default = []
 # cover = []
 gst = ["dep:gstreamer", "dep:glib"]
 mpv = ["dep:libmpv-sirno"]
-rusty = ["dep:symphonia", "dep:soundtouch", "dep:stream-download", "dep:cpal"]
+rusty = ["dep:symphonia", "dep:ness_stretch_lib", "dep:stream-download", "dep:cpal"]
 all-backends = ["gst", "mpv", "rusty"]
 
 
